@@ -24,12 +24,14 @@
         <RepositoryType>git</RepositoryType>
         <PackageTags>railway;result;monad;linq;error-handling;functional;csharp</PackageTags>
         <PackageReleaseNotes>Initial release: Result, Failure, BindResult (sync + async LINQ), ResNone, Traverse with error accumulation.</PackageReleaseNotes>
+        <PackageIcon>logo.png</PackageIcon>
     </PropertyGroup>
 
-    <!-- Include README and LICENSE in the package -->
+    <!-- Include README, LICENSE and icon in the package -->
     <ItemGroup>
         <None Include="..\README.md" Pack="true" PackagePath="" />
         <None Include="..\LICENSE" Pack="true" PackagePath="" />
+        <None Include="..\logo.png" Pack="true" PackagePath="" />
     </ItemGroup>
 
     <!-- SourceLink for debugging support -->
