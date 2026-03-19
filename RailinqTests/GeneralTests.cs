@@ -1,71 +1,451 @@
-﻿using FluentAssertions;
+using FluentAssertions;
 using Railinq;
 
 namespace RailinqTests;
 
 public class GeneralTests
 {
+    // ================================================================
+    // Helpers: domain types & fake services mirroring Railinq.Demo
+    // ================================================================
+
+    private record Product(string Name, decimal Price, int Stock);
+
+    private record Order(IReadOnlyList<CartItem> Items, decimal Total, string Status);
+
+    private record CartItem(string ProductName, int Quantity);
+
+    private readonly Dictionary<string, Product> _products = new()
+    {
+        ["Laptop"] = new Product("Laptop", 999.99m, 10),
+        ["Mouse"] = new Product("Mouse", 29.99m, 100),
+        ["Keyboard"] = new Product("Keyboard", 79.99m, 0),
+        ["Monitor"] = new Product("Monitor", 499.99m, 3),
+    };
+
+    private const decimal MaxPaymentAmount = 5000m;
+
+    private Result<Product> FindProduct(string name)
+    {
+        return _products.TryGetValue(name, out var product)
+            ? Result<Product>.Success(product)
+            : Result<Product>.Failure(new Failure("Product not found", $"No product with name '{name}'"));
+    }
+
+    private static Result<Product> ValidateStock(Product product, int quantity)
+    {
+        return product.Stock >= quantity
+            ? Result<Product>.Success(product)
+            : Result<Product>.Failure(new Failure("Out of stock", $"'{product.Name}' has {product.Stock}, requested {quantity}"));
+    }
+
+    private static Result<ResNone> Charge(decimal amount)
+    {
+        return amount > MaxPaymentAmount
+            ? Result<ResNone>.Failure(new Failure("Payment declined", $"Amount {amount:C} exceeds limit"))
+            : Result<ResNone>.Success(ResNone.Get);
+    }
+
+    private static Result<Order> CreateOrder(Product product, int quantity)
+    {
+        var item = new CartItem(product.Name, quantity);
+        var total = product.Price * quantity;
+        return Result<Order>.Success(new Order([item], total, "Created"));
+    }
+
+    private Result<Order> Checkout(string productName, int quantity)
+    {
+        return
+            from product in FindProduct(productName)
+            from validated in ValidateStock(product, quantity)
+            from order in CreateOrder(validated, quantity)
+            from _ in Charge(order.Total)
+            select order;
+    }
+
+    private Result<ResNone> ValidateCartItemUnit(CartItem item)
+    {
+        return (
+            from product in FindProduct(item.ProductName)
+            from validated in ValidateStock(product, item.Quantity)
+            select validated
+        ).Match(
+            onFailure: err => Result<ResNone>.Failure(err),
+            onSuccess: _ => Result<ResNone>.Success(ResNone.Get)
+        );
+    }
+
+    // ================================================================
+    // Demo 1: Success / Failure + Match
+    // ================================================================
+
     [Fact]
-    public void Test1()
+    public void FindProduct_ExistingProduct_ReturnsSuccess()
     {
-        
-        var res =
-            from foo in GetFooData()
-            from bar in GetBarData()
-            from result in ConcatServiceMethod(foo, bar)
-            select result;
-        
-        res.IsSuccess.Should().BeTrue();
-        res.Value.Should().Be("FooBar");
+        var result = FindProduct("Laptop");
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Name.Should().Be("Laptop");
+        result.Value.Price.Should().Be(999.99m);
     }
 
-
-    private Result<string> ConcatServiceMethod(Foo foo, Bar bar)
+    [Fact]
+    public void FindProduct_UnknownProduct_ReturnsFailure()
     {
-        return Result<string>.Success(foo.Name + bar.Name);
+        var result = FindProduct("Projector");
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error.ErrorMessage.Should().Be("Product not found");
     }
 
-
-    private Result<Foo> GetFooData(bool throwException = false)
+    [Fact]
+    public void Match_OnSuccess_CallsSuccessBranch()
     {
-        try
-        {
-            //Эта часть эмулирует какую-то ошибку, например обрыв сети
-            if (throwException)
-            {
-                throw new Exception();
-            }
-            return Result<Foo>.Success(new Foo(1, "Foo"));
-        }
-        catch(Exception) 
-        {
-            return Result<Foo>.Failure(Failure.AssertionFailure(""));
-        }
-    }
-    
+        var result = FindProduct("Laptop");
 
-    private Result<Bar> GetBarData(bool throwException = false)
-    {
-        try
-        {
-            //Эта часть эмулирует какую-то ошибку, например обрыв сети
-            if (throwException)
-            {
-                throw new Exception();
-            }
-            return Result<Bar>.Success(new Bar(1, "Bar"));
-        }
-        catch(Exception) 
-        {
-            return Result<Bar>.Failure(Failure.AssertionFailure(""));
-        }
+        var output = result.Match(
+            onFailure: err => $"FAIL: {err}",
+            onSuccess: p => $"OK: {p.Name}"
+        );
+
+        output.Should().Be("OK: Laptop");
     }
 
+    [Fact]
+    public void Match_OnFailure_CallsFailureBranch()
+    {
+        var result = FindProduct("Projector");
 
-    private record Foo(int Id, string Name);
+        var output = result.Match(
+            onFailure: err => $"FAIL: {err}",
+            onSuccess: p => $"OK: {p.Name}"
+        );
 
-    
-    private record Bar(int Id, string Name);
-    
-    
+        output.Should().StartWith("FAIL:");
+    }
+
+    // ================================================================
+    // Demo 2: Bind (LINQ query syntax)
+    // ================================================================
+
+    [Fact]
+    public void Checkout_Success_ReturnsOrder()
+    {
+        var result = Checkout("Laptop", 2);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Items.Should().HaveCount(1);
+        result.Value.Total.Should().Be(999.99m * 2);
+        result.Value.Status.Should().Be("Created");
+    }
+
+    [Fact]
+    public void Checkout_OutOfStock_ReturnsFailure()
+    {
+        var result = Checkout("Keyboard", 1);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error.ErrorMessage.Should().Be("Out of stock");
+    }
+
+    [Fact]
+    public void Checkout_ProductNotFound_ReturnsFailure()
+    {
+        var result = Checkout("Projector", 1);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error.ErrorMessage.Should().Be("Product not found");
+    }
+
+    [Fact]
+    public void Checkout_PaymentExceedsLimit_ReturnsFailure()
+    {
+        var result = Checkout("Laptop", 6);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error.ErrorMessage.Should().Be("Payment declined");
+    }
+
+    [Fact]
+    public void CheckoutWithReceipt_ClosureCapturesEarlierSteps()
+    {
+        var result =
+            from product in FindProduct("Laptop")
+            from validated in ValidateStock(product, 2)
+            from order in CreateOrder(validated, 2)
+            from _ in Charge(order.Total)
+            select $"Receipt: {product.Name} x2, total: {order.Total:C}";
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().Contain("Laptop");
+        result.Value.Should().Contain("x2");
+    }
+
+    // ================================================================
+    // Demo 3: Traverse — short-circuit, returns values
+    // ================================================================
+
+    [Fact]
+    public void Traverse_AllSucceed_ReturnsAllValues()
+    {
+        var names = new List<string> { "Laptop", "Mouse", "Monitor" };
+
+        var result = BindResult.Traverse<string, Product>(names, FindProduct);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().HaveCount(3);
+        result.Value.Select(p => p.Name).Should().BeEquivalentTo("Laptop", "Mouse", "Monitor");
+    }
+
+    [Fact]
+    public void Traverse_SecondFails_ShortCircuits()
+    {
+        var names = new List<string> { "Laptop", "Projector", "Tablet" };
+
+        var result = BindResult.Traverse<string, Product>(names, FindProduct);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error.ErrorMessage.Should().Be("Product not found");
+    }
+
+    // ================================================================
+    // Demo 3: TraverseUnit — short-circuit, no return values
+    // ================================================================
+
+    [Fact]
+    public void TraverseUnit_AllValid_ReturnsSuccess()
+    {
+        var cart = new List<CartItem> { new("Laptop", 1), new("Mouse", 5) };
+
+        var result = BindResult.TraverseUnit(cart, ValidateCartItemUnit);
+
+        result.IsSuccess.Should().BeTrue();
+    }
+
+    [Fact]
+    public void TraverseUnit_SecondFails_ShortCircuitsAtFirstError()
+    {
+        var cart = new List<CartItem> { new("Laptop", 1), new("Keyboard", 1), new("Projector", 1) };
+
+        var result = BindResult.TraverseUnit(cart, ValidateCartItemUnit);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error.ErrorMessage.Should().Be("Out of stock");
+    }
+
+    // ================================================================
+    // Demo 3: TraverseCollectError — accumulates ALL errors
+    // ================================================================
+
+    [Fact]
+    public void TraverseCollectError_NoErrors_ReturnsSuccess()
+    {
+        var cart = new List<CartItem> { new("Laptop", 1), new("Mouse", 5) };
+
+        var result = BindResult.TraverseCollectError(
+            cart,
+            (item, _) => ValidateCartItemUnit(item)
+        );
+
+        result.IsSuccess.Should().BeTrue();
+    }
+
+    [Fact]
+    public void TraverseCollectError_MultipleErrors_AccumulatesAll()
+    {
+        var cart = new List<CartItem>
+        {
+            new("Laptop", 1),    // OK
+            new("Keyboard", 1),  // Out of stock
+            new("Projector", 1), // Not found
+            new("Tablet", 2),    // Not found
+        };
+
+        var result = BindResult.TraverseCollectError(
+            cart,
+            (item, _) => ValidateCartItemUnit(item)
+        );
+
+        result.IsSuccess.Should().BeFalse();
+
+        var allErrors = result.Error.GetAllFailures();
+        allErrors.Should().HaveCount(3);
+    }
+
+    // ================================================================
+    // Async LINQ: SelectMany overloads
+    // ================================================================
+
+    [Fact]
+    public async Task AsyncSelectMany_TaskToTask_ChainsCorrectly()
+    {
+        var result = await (
+            from product in Task.FromResult(FindProduct("Laptop"))
+            from validated in Task.FromResult(ValidateStock(product, 2))
+            select validated
+        );
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Name.Should().Be("Laptop");
+    }
+
+    [Fact]
+    public async Task AsyncSelectMany_SyncToTask_ChainsCorrectly()
+    {
+        var result = await (
+            from product in FindProduct("Laptop")
+            from validated in Task.FromResult(ValidateStock(product, 2))
+            select validated
+        );
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Name.Should().Be("Laptop");
+    }
+
+    [Fact]
+    public async Task AsyncSelectMany_TaskToSync_ChainsCorrectly()
+    {
+        var result = await (
+            from product in Task.FromResult(FindProduct("Laptop"))
+            from validated in ValidateStock(product, 2)
+            select validated
+        );
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Name.Should().Be("Laptop");
+    }
+
+    [Fact]
+    public async Task AsyncSelectMany_Failure_PropagatesError()
+    {
+        var result = await (
+            from product in Task.FromResult(FindProduct("Projector"))
+            from validated in Task.FromResult(ValidateStock(product, 1))
+            select validated
+        );
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error.ErrorMessage.Should().Be("Product not found");
+    }
+
+    // ================================================================
+    // Async Traverse
+    // ================================================================
+
+    [Fact]
+    public async Task AsyncTraverse_AllSucceed_ReturnsAllValues()
+    {
+        var names = new List<string> { "Laptop", "Mouse" };
+
+        var result = await names.Traverse<string, Product>(
+            name => Task.FromResult(FindProduct(name))
+        );
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public async Task AsyncTraverse_OneFails_ShortCircuits()
+    {
+        var names = new List<string> { "Laptop", "Projector", "Mouse" };
+
+        var result = await names.Traverse<string, Product>(
+            name => Task.FromResult(FindProduct(name))
+        );
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error.ErrorMessage.Should().Be("Product not found");
+    }
+
+    // ================================================================
+    // Error chaining: Append / PreviousFailure
+    // ================================================================
+
+    [Fact]
+    public void Failure_GetAllFailures_ReturnsChain()
+    {
+        var first = new Failure("Error 1", "");
+        var second = new Failure("Error 2", "") { PreviousFailure = first };
+        var third = new Failure("Error 3", "") { PreviousFailure = second };
+
+        var all = third.GetAllFailures();
+
+        all.Should().HaveCount(3);
+        all[0].ErrorMessage.Should().Be("Error 1");
+        all[1].ErrorMessage.Should().Be("Error 2");
+        all[2].ErrorMessage.Should().Be("Error 3");
+    }
+
+    [Fact]
+    public void Failure_ToString_ReturnsErrorMessage()
+    {
+        var failure = new Failure("Something went wrong", "details");
+
+        failure.ToString().Should().Be("Something went wrong");
+    }
+
+    [Fact]
+    public void Append_BothSuccess_ReturnsTuple()
+    {
+        var a = Result<int>.Success(1);
+        var b = Result<string>.Success("hello");
+
+        var result = a.Append(b);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().Be((1, "hello"));
+    }
+
+    [Fact]
+    public void Append_FirstFails_ReturnsFailure()
+    {
+        var a = Result<int>.Failure(new Failure("A failed", ""));
+        var b = Result<string>.Success("hello");
+
+        var result = a.Append(b);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error.ErrorMessage.Should().Be("A failed");
+    }
+
+    [Fact]
+    public void Append_BothFail_ChainsErrors()
+    {
+        var a = Result<int>.Failure(new Failure("A failed", ""));
+        var b = Result<string>.Failure(new Failure("B failed", ""));
+
+        var result = a.Append(b);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error.ErrorMessage.Should().Be("B failed");
+        result.Error.PreviousFailure.Should().NotBeNull();
+        result.Error.PreviousFailure!.ErrorMessage.Should().Be("A failed");
+    }
+
+    // ================================================================
+    // Select (map) on Result
+    // ================================================================
+
+    [Fact]
+    public void Select_Success_TransformsValue()
+    {
+        var result = Result<int>.Success(5);
+
+        var mapped = result.Select(x => x * 2);
+
+        mapped.IsSuccess.Should().BeTrue();
+        mapped.Value.Should().Be(10);
+    }
+
+    [Fact]
+    public void Select_Failure_PropagatesError()
+    {
+        var result = Result<int>.Failure(new Failure("bad", ""));
+
+        var mapped = result.Select(x => x * 2);
+
+        mapped.IsSuccess.Should().BeFalse();
+        mapped.Error.ErrorMessage.Should().Be("bad");
+    }
 }

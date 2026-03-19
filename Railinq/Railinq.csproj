@@ -1,10 +1,47 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>net10.0</TargetFramework>
+        <TargetFrameworks>netstandard2.0;net8.0;net10.0</TargetFrameworks>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
+        <LangVersion>latest</LangVersion>
         <RootNamespace>Railinq</RootNamespace>
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+        <NoWarn>CS1591</NoWarn>
     </PropertyGroup>
+
+    <!-- NuGet Package Metadata -->
+    <PropertyGroup>
+        <PackageId>Railinq</PackageId>
+        <Version>0.5.0</Version>
+        <Authors>velikonskii</Authors>
+        <Description>Railway-Oriented Programming for C# with native LINQ query syntax support. Chain operations that can fail, accumulate errors, and use familiar from/select syntax — all with ~4 types and zero dependencies.</Description>
+        <Copyright>Copyright (c) 2025 Railinq Contributors</Copyright>
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <PackageProjectUrl>https://github.com/velikonskii/Railinq</PackageProjectUrl>
+        <RepositoryUrl>https://github.com/velikonskii/Railinq</RepositoryUrl>
+        <RepositoryType>git</RepositoryType>
+        <PackageTags>railway;result;monad;linq;error-handling;functional;csharp</PackageTags>
+        <PackageReleaseNotes>Initial release: Result, Failure, BindResult (sync + async LINQ), ResNone, Traverse with error accumulation.</PackageReleaseNotes>
+    </PropertyGroup>
+
+    <!-- Include README and LICENSE in the package -->
+    <ItemGroup>
+        <None Include="..\README.md" Pack="true" PackagePath="" />
+        <None Include="..\LICENSE" Pack="true" PackagePath="" />
+    </ItemGroup>
+
+    <!-- SourceLink for debugging support -->
+    <PropertyGroup>
+        <PublishRepositoryUrl>true</PublishRepositoryUrl>
+        <EmbedUntrackedSources>true</EmbedUntrackedSources>
+        <IncludeSymbols>true</IncludeSymbols>
+        <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
+    </ItemGroup>
 
 </Project>
