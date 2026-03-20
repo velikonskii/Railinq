@@ -16,6 +16,6 @@ public class ProductRepository
     {
         return _products.TryGetValue(name, out var product)
             ? Result<Product>.Success(product)
-            : Result<Product>.Failure(new Failure("Product not found", $"No product with name '{name}'"));
+            : Result<Product>.Failure(new ProductNotFoundError(name));
     }
 }

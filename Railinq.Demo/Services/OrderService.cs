@@ -9,7 +9,7 @@ public class OrderService(ProductRepository repo, PaymentGateway payment)
     {
         return product.Stock >= quantity
             ? Result<Product>.Success(product)
-            : Result<Product>.Failure(new Failure("Out of stock", $"'{product.Name}' has {product.Stock} in stock, requested {quantity}"));
+            : Result<Product>.Failure(new OutOfStockError(product.Name, product.Stock, quantity));
     }
 
     public Result<Order> CreateOrder(Product product, int quantity)

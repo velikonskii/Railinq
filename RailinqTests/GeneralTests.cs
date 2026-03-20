@@ -3,6 +3,25 @@ using Railinq;
 
 namespace RailinqTests;
 
+public record ProductNotFoundError() : Failure("Product not found");
+
+public record OutOfStockError() : Failure("Out of stock");
+
+public record PaymentDeclinedError() : Failure("Payment declined");
+
+public record Error1() : Failure("Error 1");
+
+public record Error2() : Failure("Error 2");
+
+public record Error3() : Failure("Error 3");
+
+public record AFailedError() : Failure("A failed");
+
+public record BFailedError() : Failure("B failed");
+
+public record BadError() : Failure("bad");
+
+
 public class GeneralTests
 {
     // ================================================================
@@ -29,20 +48,20 @@ public class GeneralTests
     {
         return _products.TryGetValue(name, out var product)
             ? Result<Product>.Success(product)
-            : Result<Product>.Failure(new Failure("Product not found", $"No product with name '{name}'"));
+            : Result<Product>.Failure(Failure.CreateLogged<ProductNotFoundError>($"No product with name '{name}'"));
     }
 
     private static Result<Product> ValidateStock(Product product, int quantity)
     {
         return product.Stock >= quantity
             ? Result<Product>.Success(product)
-            : Result<Product>.Failure(new Failure("Out of stock", $"'{product.Name}' has {product.Stock}, requested {quantity}"));
+            : Result<Product>.Failure(Failure.CreateLogged<OutOfStockError>($"'{product.Name}' has {product.Stock}, requested {quantity}"));
     }
 
     private static Result<ResNone> Charge(decimal amount)
     {
         return amount > MaxPaymentAmount
-            ? Result<ResNone>.Failure(new Failure("Payment declined", $"Amount {amount:C} exceeds limit"))
+            ? Result<ResNone>.Failure(Failure.CreateLogged<PaymentDeclinedError>($"Amount {amount:C} exceeds limit"))
             : Result<ResNone>.Success(ResNone.Get);
     }
 
@@ -365,9 +384,11 @@ public class GeneralTests
     [Fact]
     public void Failure_GetAllFailures_ReturnsChain()
     {
-        var first = new Failure("Error 1", "");
-        var second = new Failure("Error 2", "") { PreviousFailure = first };
-        var third = new Failure("Error 3", "") { PreviousFailure = second };
+        var first = Failure.Create<Error1>();
+        var second = Failure.Create<Error2>();
+        second.PreviousFailure = first;
+        var third = Failure.Create<Error3>();
+        third.PreviousFailure = second;
 
         var all = third.GetAllFailures();
 
@@ -380,9 +401,9 @@ public class GeneralTests
     [Fact]
     public void Failure_ToString_ReturnsErrorMessage()
     {
-        var failure = new Failure("Something went wrong", "details");
+        var failure = Failure.CreateLogged<Error>("details");
 
-        failure.ToString().Should().Be("Something went wrong");
+        failure.ToString().Should().Be("General Error");
     }
 
     [Fact]
@@ -400,7 +421,7 @@ public class GeneralTests
     [Fact]
     public void Append_FirstFails_ReturnsFailure()
     {
-        var a = Result<int>.Failure(new Failure("A failed", ""));
+        var a = Result<int>.Failure(Failure.Create<AFailedError>());
         var b = Result<string>.Success("hello");
 
         var result = a.Append(b);
@@ -412,8 +433,8 @@ public class GeneralTests
     [Fact]
     public void Append_BothFail_ChainsErrors()
     {
-        var a = Result<int>.Failure(new Failure("A failed", ""));
-        var b = Result<string>.Failure(new Failure("B failed", ""));
+        var a = Result<int>.Failure(Failure.Create<AFailedError>());
+        var b = Result<string>.Failure(Failure.Create<BFailedError>());
 
         var result = a.Append(b);
 
@@ -441,7 +462,7 @@ public class GeneralTests
     [Fact]
     public void Select_Failure_PropagatesError()
     {
-        var result = Result<int>.Failure(new Failure("bad", ""));
+        var result = Result<int>.Failure(Failure.Create<BadError>());
 
         var mapped = result.Select(x => x * 2);
 
