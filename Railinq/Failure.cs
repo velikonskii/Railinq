@@ -1,12 +1,11 @@
-﻿using System.Diagnostics;
-using System.Runtime.CompilerServices;
-using Microsoft.VisualBasic;
-
 namespace Railinq;
 
 public record Failure
 {
-
+    
+    public delegate void LogHandler(string typeName, string errorMessage, string exceptionMessage);
+    
+    
     public Failure
     (
         string errorMessage,
@@ -16,45 +15,47 @@ public record Failure
     {
         ErrorMessage = errorMessage;
         PreviousFailure = previousFailure;
-        Debug.WriteLine
-        (
-            LogTemplate,
-            GetType().Name,
-            errorMessage,
-            exceptionMessage
-        );
+        _logHandler?.Invoke(GetType().Name, errorMessage, exceptionMessage);
     }
 
-    
+
+
+
+    public static void AttachLogHandler(LogHandler logHandler)
+    {
+        _logHandler = logHandler;
+    }
+
+
     public List<Failure> GetAllFailures()
     {
         if (PreviousFailure != null)
         {
             var failures = PreviousFailure.GetAllFailures();
-            var list = new List<Failure>(failures) {this};
+            var list = new List<Failure>(failures) { this };
             return list;
         }
         return [this];
     }
-    
+
 
     public sealed override string ToString()
     {
         return ErrorMessage;
     }
-    
+
+
     public static GeneralError AssertionFailure(string exceptionMessage)
     {
         return new GeneralError(exceptionMessage);
     }
 
+    
     public readonly string ErrorMessage;
     public Failure? PreviousFailure;
 
-    private const string LogTemplate = "[FAILURE] {0}: {1}\n  {2}";
+    private static volatile LogHandler? _logHandler;
 }
 
 public record GeneralError(string ExceptionMessage)
     : Failure("General Error", ExceptionMessage);
-
-
