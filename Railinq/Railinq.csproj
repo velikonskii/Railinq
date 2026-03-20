@@ -13,7 +13,7 @@
     <!-- NuGet Package Metadata -->
     <PropertyGroup>
         <PackageId>Railinq</PackageId>
-        <Version>0.5.0</Version>
+        <Version>0.6.0</Version>
         <Authors>velikonskii</Authors>
         <Description>Railway-Oriented Programming for C# with native LINQ query syntax support. Chain operations that can fail, accumulate errors, and use familiar from/select syntax — all with ~4 types and zero dependencies.</Description>
         <Copyright>Copyright (c) 2025 Railinq Contributors</Copyright>
@@ -22,8 +22,8 @@
         <PackageProjectUrl>https://github.com/velikonskii/Railinq</PackageProjectUrl>
         <RepositoryUrl>https://github.com/velikonskii/Railinq</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
-        <PackageTags>railway;result;monad;linq;error-handling;functional;csharp</PackageTags>
-        <PackageReleaseNotes>Initial release: Result, Failure, BindResult (sync + async LINQ), ResNone, Traverse with error accumulation.</PackageReleaseNotes>
+        <PackageTags>railway;result;monad;linq;error-handling;functional;csharp;rop;railway-oriented-programming;failure;bind;either;discriminated-union;pattern-matching;traverse;validation;async;dotnet</PackageTags>
+        <PackageReleaseNotes>v0.6.0: Pluggable error logging (AttachLogHandler), generic factory methods (Create, CreateLogged, CreateFromEx), custom error types with pattern matching, protected Log() for custom constructors.</PackageReleaseNotes>
         <PackageIcon>logo.png</PackageIcon>
     </PropertyGroup>
 

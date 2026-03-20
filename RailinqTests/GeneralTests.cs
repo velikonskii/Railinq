@@ -21,6 +21,20 @@ public record BFailedError() : Failure("B failed");
 
 public record BadError() : Failure("bad");
 
+public record DbError() : Failure("Database error");
+
+public record DetailedError : Failure
+{
+    public DetailedError(string detail)
+        : base($"Detailed: {detail}")
+    {
+        Detail = detail;
+        Log($"Custom log for '{detail}'");
+    }
+
+    public string Detail { get; }
+}
+
 
 public class GeneralTests
 {
@@ -468,5 +482,148 @@ public class GeneralTests
 
         mapped.IsSuccess.Should().BeFalse();
         mapped.Error.ErrorMessage.Should().Be("bad");
+    }
+
+    // ================================================================
+    // Factory methods: Create, CreateLogged, CreateFromEx
+    // ================================================================
+
+    [Fact]
+    public void Create_ReturnsCorrectType()
+    {
+        var error = Failure.Create<ProductNotFoundError>();
+
+        error.Should().BeOfType<ProductNotFoundError>();
+        error.ErrorMessage.Should().Be("Product not found");
+    }
+
+
+    [Fact]
+    public void Create_DoesNotInvokeLogHandler()
+    {
+        var logged = false;
+        Failure.AttachLogHandler((_, _, _) => logged = true);
+
+        Failure.Create<ProductNotFoundError>();
+
+        logged.Should().BeFalse();
+        Failure.AttachLogHandler(null!);
+    }
+
+
+    [Fact]
+    public void CreateLogged_ReturnsCorrectTypeAndLogs()
+    {
+        string? capturedType = null;
+        string? capturedMessage = null;
+        string? capturedExc = null;
+        Failure.AttachLogHandler
+        (
+            (type, msg, exc) =>
+            {
+                capturedType = type;
+                capturedMessage = msg;
+                capturedExc = exc;
+            }
+        );
+
+        var error = Failure.CreateLogged<PaymentDeclinedError>("manual check");
+
+        error.Should().BeOfType<PaymentDeclinedError>();
+        error.ErrorMessage.Should().Be("Payment declined");
+        capturedType.Should().Be("PaymentDeclinedError");
+        capturedMessage.Should().Be("Payment declined");
+        capturedExc.Should().Contain("manual check");
+        capturedExc.Should().Contain("[CreateLogged_ReturnsCorrectTypeAndLogs]");
+        Failure.AttachLogHandler(null!);
+    }
+
+
+    [Fact]
+    public void CreateFromEx_ReturnsCorrectTypeAndLogsException()
+    {
+        string? capturedExc = null;
+        Failure.AttachLogHandler((_, _, exc) => capturedExc = exc);
+
+        var exception = new InvalidOperationException("test boom");
+        var error = Failure.CreateFromEx<DbError>(exception);
+
+        error.Should().BeOfType<DbError>();
+        error.ErrorMessage.Should().Be("Database error");
+        capturedExc.Should().Contain("InvalidOperationException");
+        capturedExc.Should().Contain("test boom");
+        Failure.AttachLogHandler(null!);
+    }
+
+    // ================================================================
+    // Pattern matching on error types
+    // ================================================================
+
+    [Fact]
+    public void PatternMatch_DistinguishesErrorTypes()
+    {
+        var outOfStock = Result<int>.Failure(Failure.Create<OutOfStockError>());
+        var notFound = Result<int>.Failure(Failure.Create<ProductNotFoundError>());
+        var declined = Result<int>.Failure(Failure.Create<PaymentDeclinedError>());
+
+        string Classify(Result<int> r) => r.Match
+        (
+            onFailure: err => err switch
+            {
+                OutOfStockError => "stock",
+                ProductNotFoundError => "not_found",
+                PaymentDeclinedError => "payment",
+                _ => "other"
+            },
+            onSuccess: _ => "ok"
+        );
+
+        Classify(outOfStock).Should().Be("stock");
+        Classify(notFound).Should().Be("not_found");
+        Classify(declined).Should().Be("payment");
+    }
+
+    // ================================================================
+    // Custom constructor with data and Log()
+    // ================================================================
+
+    [Fact]
+    public void CustomConstructor_CarriesDataAndLogs()
+    {
+        string? capturedExc = null;
+        Failure.AttachLogHandler((_, _, exc) => capturedExc = exc);
+
+        var error = new DetailedError("connection timeout");
+
+        error.Should().BeOfType<DetailedError>();
+        error.ErrorMessage.Should().Be("Detailed: connection timeout");
+        error.Detail.Should().Be("connection timeout");
+        capturedExc.Should().Contain("connection timeout");
+        Failure.AttachLogHandler(null!);
+    }
+
+
+    [Fact]
+    public void CustomConstructor_WithoutLogHandler_DoesNotThrow()
+    {
+        Failure.AttachLogHandler(null!);
+
+        var act = () => new DetailedError("safe call");
+
+        act.Should().NotThrow();
+    }
+
+    // ================================================================
+    // AttachLogHandler
+    // ================================================================
+
+    [Fact]
+    public void AttachLogHandler_NullHandler_NoLogging()
+    {
+        Failure.AttachLogHandler(null!);
+
+        var act = () => Failure.CreateLogged<Error>("test");
+
+        act.Should().NotThrow();
     }
 }
